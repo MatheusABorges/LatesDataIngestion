@@ -1,0 +1,10 @@
+python-dotenv==1.0.0
+
+langchain
+langchain-core
+
+langchain-huggingface
+sentence-transformers
+
+qdrant-client
+langchain-qdrant
