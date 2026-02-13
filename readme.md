@@ -24,6 +24,22 @@ Antes de começar, certifique-se de que seu ambiente possui:
 
 ---
 
+## Sobre o Modelo de Embeddings
+
+Este projeto utiliza modelos da biblioteca `SentenceTransformers` para converter texto em vetores.
+
+### Comportamento Padrão
+1.  **Primeira Execução:** O script verifica se o modelo definido no `.env` existe na pasta local (`modelos_locais`). Se não existir, ele fará o **download automático** do Hugging Face (aprox. 1.1GB).
+2.  **Execuções Seguintes:** O sistema carrega o modelo diretamente do disco. **Não é necessário acesso à internet** para execuções subsequentes.
+
+### Instalação Manual (Ambientes Offline)
+Se o servidor de produção não tiver acesso à internet:
+1.  Em uma máquina conectada, baixe o modelo: `git clone https://huggingface.co/sentence-transformers/paraphrase-multilingual-mpnet-base-v2`
+2.  Copie a pasta baixada para dentro de `LatesDataIngestion/modelos_locais`.
+3.  Configure `MODEL_CACHE_DIR=./modelos_locais` no arquivo `.env`.
+
+---
+
 ## Instalação e Configuração
 
 Siga os passos abaixo para preparar o ambiente de desenvolvimento.
