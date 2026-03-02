@@ -1,142 +1,165 @@
 import xml.etree.ElementTree as ET
 from langchain_core.documents import Document
+from datetime import datetime
 
 class LattesProcessor:
     def __init__(self, xml_path):
         self.xml_path = xml_path
         self.tree = ET.parse(xml_path)
         self.root = self.tree.getroot()
+        self.data_ingestao = datetime.now().isoformat()
         
-        # 1. Extração Global (Contexto do Pesquisador)
-        # Isso garante que todos os chunks saibam a quem pertencem
         self.researcher_info = self._extract_global_info()
 
     def _extract_global_info(self):
-        """Pega dados que se repetem em todos os chunks"""
         dados_gerais = self.root.find('DADOS-GERAIS')
         
-        # Proteção contra XML mal formado
+        endereco = dados_gerais.find('ENDERECO/ENDERECO-PROFISSIONAL')
+        instituicao = endereco.attrib.get('NOME-INSTITUICAO-EMPRESA', 'Não Informada') if endereco is not None else "Não Informada"
+
         if dados_gerais is None:
-            return {"nome": "Desconhecido", "id_lattes": "0000"}
+            return None
 
         return {
-            "nome": dados_gerais.attrib.get('NOME-COMPLETO', 'Desconhecido'),
-            "id_lattes": self.root.attrib.get('NUMERO-IDENTIFICADOR', '0000'),
-            "atualizacao": self.root.attrib.get('DATA-ATUALIZACAO', ''),
-            "source": str(self.xml_path)
+            "nome": dados_gerais.attrib.get('NOME-COMPLETO', None),
+            "id_lattes": self.root.attrib.get('NUMERO-IDENTIFICADOR', None),
+            "atualizacao": self.root.attrib.get('DATA-ATUALIZACAO', None),
+            "instituicao": instituicao,
+            "source": str(self.xml_path),
+            "data_ingestao": self.data_ingestao
         }
 
-    def process_bio(self):
-        """Chunk 1: O Perfil/Resumo"""
+    def get_profile_doc(self):
+        """
+        Gera o documento ÚNICO para a coleção 'researchers_summary'.
+        Agrega Resumo + Áreas + Keywords de Projetos/Orientações.
+        """
         dados_gerais = self.root.find('DADOS-GERAIS')
-        if dados_gerais is None: return []
-
         resumo = dados_gerais.find('RESUMO-CV')
-        if resumo is None: return []
+        texto_resumo = resumo.attrib.get('TEXTO-RESUMO-CV-RH', '') if resumo is not None else ""
 
-        texto_resumo = resumo.attrib.get('TEXTO-RESUMO-CV-RH', '')
+        areas = [a.attrib.get('NOME-DA-AREA-DO-CONHECIMENTO') for a in self.root.findall('.//AREA-DE-ATUACAO')]
+        texto_areas = ", ".join(filter(None, areas))
+
+        keywords = []
+        for proj in self.root.findall('.//PROJETO-DE-PESQUISA'):
+            keywords.append(proj.attrib.get('NOME-DO-PROJETO'))
+        for orient in self.root.findall('.//DETALHAMENTO-DA-ORIENTACAO-CONCLUIDA'):
+            keywords.append(orient.attrib.get('TITULO-DO-TRABALHO-DE-CONCLUSAO'))
         
-        # Enriquecimento do Texto (Contexto)
+        texto_keywords = "; ".join(filter(None, keywords))
+
         content = (
-            f"PERFIL BIOGRÁFICO DO PESQUISADOR {self.researcher_info['nome']}.\n"
-            f"RESUMO: {texto_resumo}"
+            f"PERFIL PESQUISADOR: {self.researcher_info['nome']}\n"
+            f"INSTITUIÇÃO: {self.researcher_info['instituicao']}\n"
+            f"RESUMO: {texto_resumo}\n"
+            f"ÁREAS DE ATUAÇÃO: {texto_areas}\n"
+            f"TEMAS TRABALHADOS (PROJETOS/ORIENTAÇÕES): {texto_keywords}"
         )
 
-        # Metadados Específicos
         metadata = self.researcher_info.copy()
         metadata.update({
             "tipo": "perfil",
-            "ano": int(metadata['atualizacao'][-4:]) if len(metadata['atualizacao']) >= 4 else 0
+            "conteudo": content
         })
 
-        return [Document(page_content=content, metadata=metadata)]
+        return Document(page_content=content, metadata=metadata)
 
-    def process_education(self):
-        """Chunk 2: Formação Acadêmica (Doutorado, Mestrado, etc)"""
+    def _get_projetos(self):
         docs = []
-        formacao = self.root.find('DADOS-GERAIS/FORMACAO-ACADEMICA-TITULACAO')
-        
-        if formacao is None: return docs
+        base_metadata = self.researcher_info.copy()
 
-        # Mapeando tags para nomes legíveis
-        mapa_cursos = {
-            'DOUTORADO': 'Doutorado',
-            'MESTRADO': 'Mestrado',
-            'GRADUACAO': 'Graduação',
-            'POS-DOUTORADO': 'Pós-Doutorado'
-        }
+        for proj in self.root.findall('.//PROJETO-DE-PESQUISA'):
+            nome = proj.attrib.get('NOME-DO-PROJETO', 'Sem título')
+            desc = proj.attrib.get('DESCRICAO-DO-PROJETO', '')
+            ano_inicio = proj.attrib.get('ANO-INICIO', '')
+            ano_fim = proj.attrib.get('ANO-FIM', '')
+            situacao_raw = proj.attrib.get('SITUACAO', '')
 
-        for tag, nome_legivel in mapa_cursos.items():
-            for curso in formacao.findall(tag):
-                instituicao = curso.attrib.get('NOME-INSTITUICAO', 'Instituição não informada')
-                curso_nome = curso.attrib.get('NOME-CURSO', '')
-                ano_conclusao = curso.attrib.get('ANO-DE-CONCLUSAO', '')
-                status = curso.attrib.get('STATUS-DO-CURSO', 'CONCLUIDO')
-
-                # Texto Rico
-                content = (
-                    f"FORMAÇÃO ACADÊMICA DE {self.researcher_info['nome']}: "
-                    f"{nome_legivel} em {curso_nome} realizado na {instituicao}. "
-                    f"Ano de conclusão: {ano_conclusao}. Status: {status}."
-                )
-
-                meta = self.researcher_info.copy()
-                meta.update({
-                    "tipo": "formacao",
-                    "nivel": nome_legivel,
-                    "ano": int(ano_conclusao) if ano_conclusao.isdigit() else 0,
-                    "instituicao": instituicao
-                })
-
-                docs.append(Document(page_content=content, metadata=meta))
-        
-        return docs
-
-    def process_articles(self):
-        """Chunk 3: Artigos Publicados (Um chunk por artigo)"""
-        docs = []
-        # Caminho profundo no XML
-        artigos = self.root.findall('.//ARTIGO-PUBLICADO')
-
-        for artigo in artigos:
-            basicos = artigo.find('DADOS-BASICOS-DO-ARTIGO')
-            detalhes = artigo.find('DETALHAMENTO-DO-ARTIGO')
-
-            if basicos is None or detalhes is None: continue
-
-            titulo = basicos.attrib.get('TITULO-DO-ARTIGO', '')
-            ano = basicos.attrib.get('ANO-DO-ARTIGO', '0')
-            revista = detalhes.attrib.get('TITULO-DO-PERIODICO-OU-REVISTA', '')
-            doi = basicos.attrib.get('DOI', '')
+            lista_nomes = []
+            nome_responsavel = None
             
-            # Autores (Opcional, mas útil)
-            # autores = [a.attrib.get('NOME-COMPLETO-DO-AUTOR') for a in artigo.findall('AUTORES')]
+            for integrante in proj.findall('./EQUIPE-DO-PROJETO/INTEGRANTES-DO-PROJETO'):
+                nome_int = integrante.attrib.get("NOME-COMPLETO")
+                if nome_int:
+                    lista_nomes.append(nome_int)
+                    if integrante.attrib.get("FLAG-RESPONSAVEL", "NAO").upper() == "SIM":
+                        nome_responsavel = nome_int
+
+            str_pesquisadores = ", ".join(lista_nomes)
+            
+            trecho_responsavel = f", sendo o(a) pesquisador(a) {nome_responsavel} o(a) responsável" if nome_responsavel else ""
+            
+            mapa_situacao = {
+                "CONCLUIDO": "concluído",
+                "EM_ANDAMENTO": "em andamento",
+            }
+
+            str_situacao = mapa_situacao.get(situacao_raw, situacao_raw.lower())
 
             content = (
-                f"PRODUÇÃO CIENTÍFICA DE {self.researcher_info['nome']}.\n"
-                f"TIPO: Artigo de Periódico.\n"
-                f"TÍTULO: {titulo}.\n"
-                f"PUBLICADO EM: {ano}, na revista {revista}.\n"
-                f"DOI: {doi}"
+                f"O projeto: '{nome}', é integrado pelos pesquisadores: {str_pesquisadores}{trecho_responsavel}. "
+                f"E atualmente o projeto encontra-se {str_situacao}. "
+                f"Esse projeto pode ser descrito como: {desc}"
             )
 
-            meta = self.researcher_info.copy()
+            meta = base_metadata.copy()
             meta.update({
-                "tipo": "producao",
-                "subtipo": "artigo",
-                "ano": int(ano) if ano.isdigit() else 0,
-                "tem_doi": bool(doi)
+                "tipo": "projeto",
+                "titulo": nome,
+                "ano_inicio": int(ano_inicio) if ano_inicio.isdigit() else 0,
+                "ano_fim": int(ano_fim) if ano_fim.isdigit() else 0,
+                "situacao": str_situacao
             })
 
             docs.append(Document(page_content=content, metadata=meta))
 
         return docs
 
-    def get_all_chunks(self):
-        """Método Mestre que chama todos os processadores"""
-        all_docs = []
-        all_docs.extend(self.process_bio())
-        all_docs.extend(self.process_education())
-        all_docs.extend(self.process_articles())
-        # Aqui você adicionaria self.process_projects(), etc.
-        return all_docs
+
+    def _get_artigos(self):
+        docs = []
+        base_metadata = self.researcher_info.copy()
+
+        return docs
+        
+    def _get_orientacoes(self):
+        return None    
+
+    def _get_atuacao(self):
+        return None
+
+    def get_production_docs(self):
+        """
+        Gera lista de documentos para a coleção 'researchers_data'.
+        Inclui Artigos, Projetos e Orientações individualmente.
+        """
+        docs = []
+        base_meta = self.researcher_info.copy()
+
+        #1. Projetos de Pesquisa
+        docs.extend(self._get_projetos())
+
+        # 2. Artigos
+        for artigo in self.root.findall('.//ARTIGO-PUBLICADO'):
+            basicos = artigo.find('DADOS-BASICOS-DO-ARTIGO')
+            detalhes = artigo.find('DETALHAMENTO-DO-ARTIGO')
+            
+            if basicos is None or detalhes is None: continue
+
+            titulo = basicos.attrib.get('TITULO-DO-ARTIGO', '')
+            ano = basicos.attrib.get('ANO-DO-ARTIGO', '0')
+            revista = detalhes.attrib.get('TITULO-DO-PERIODICO-OU-REVISTA', '')
+            
+            content = f"ARTIGO: {titulo}\nREVISTA: {revista}\nPESQUISADOR: {self.researcher_info['nome']}"
+            
+            meta = base_meta.copy()
+            meta.update({
+                "tipo": "artigo",
+                "titulo": titulo,
+                "ano": int(ano) if ano.isdigit() else 0,
+                "conteudo": content
+            })
+            docs.append(Document(page_content=content, metadata=meta))
+
+        return docs

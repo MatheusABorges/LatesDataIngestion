@@ -5,6 +5,7 @@ langchain-core
 
 langchain-huggingface
 sentence-transformers
+fastembed
 
 qdrant-client
 langchain-qdrant
