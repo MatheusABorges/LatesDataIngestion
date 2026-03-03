@@ -121,6 +121,75 @@ class LattesProcessor:
         docs = []
         base_metadata = self.researcher_info.copy()
 
+        for artigo in self.root.findall('.//ARTIGO-PUBLICADO'):
+            basicos = artigo.find('DADOS-BASICOS-DO-ARTIGO')
+            detalhes = artigo.find('DETALHAMENTO-DO-ARTIGO')
+            
+            if basicos is None or detalhes is None: 
+                continue
+
+            autores = []
+            for autor in artigo.findall('.//AUTORES'):
+                nome = autor.attrib.get('NOME-COMPLETO-DO-AUTOR')
+                if nome: 
+                    autores.append(f'\'{nome}\'')
+
+            areas_conhecimento = set()
+            for areas in artigo.findall('.//AREAS-DO-CONHECIMENTO'):
+                for i in range(1, 4):
+                    area_tag = areas.find(f'.//AREA-DO-CONHECIMENTO-{i}')
+                    if area_tag is not None:
+                        nome_area = area_tag.attrib.get('NOME-DA-AREA-DO-CONHECIMENTO')
+                        sub_area = area_tag.attrib.get('NOME-DA-SUB-AREA-DO-CONHECIMENTO')
+                        especialidade = area_tag.attrib.get('NOME-DA-ESPECIALIDADE')
+                        nome_grande = area_tag.attrib.get('NOME-GRANDE-AREA-DO-CONHECIMENTO')
+                        
+                        if nome_area: areas_conhecimento.add(nome_area)
+                        if sub_area: areas_conhecimento.add(sub_area)
+                        if especialidade: areas_conhecimento.add(especialidade)
+                        if nome_grande: areas_conhecimento.add(nome_grande)
+
+            areas_conhecimento_list = list(areas_conhecimento)
+
+            natureza = basicos.attrib.get('NATUREZA', '').strip()
+            titulo = basicos.attrib.get('TITULO-DO-ARTIGO', '').strip()
+            ano = basicos.attrib.get('ANO-DO-ARTIGO', '').strip()
+            pais = basicos.attrib.get('PAIS-DE-PUBLICACAO', '').strip()
+            idioma = basicos.attrib.get('IDIOMA', '').strip()
+            meio_divulgacao = basicos.attrib.get('MEIO-DE-DIVULGACAO', '').strip()
+            
+            titulo_revista = detalhes.attrib.get('TITULO-DO-PERIODICO-OU-REVISTA', '').strip()
+
+            frase_publicacao = []
+            if titulo_revista: frase_publicacao.append(f"na revista/periódico '{titulo_revista}'")
+            if ano: frase_publicacao.append(f"em {ano}")
+            if pais: frase_publicacao.append(f"no país {pais}")
+            if idioma: frase_publicacao.append(f"no idioma {idioma}")
+
+            texto_pub = f" foi publicado {' '.join(frase_publicacao)}" if frase_publicacao else " foi publicado"
+
+            frase_caracteristicas = []
+            if natureza: frase_caracteristicas.append(f"encontra-se {natureza.lower()}")
+            if meio_divulgacao: frase_caracteristicas.append(f"foi divulgado no formato {meio_divulgacao.lower()}")
+
+            texto_caract = f", e {' e '.join(frase_caracteristicas)}" if frase_caracteristicas else ""
+
+            summary = f"O artigo '{titulo}'{texto_pub}{texto_caract}.\n\n"
+
+            texto_autores = f"Os autores desse artigo são: {', '.join(autores)}.\n\n" if autores else ""
+            texto_conhecimento = f"Esse artigo está relacionado às seguintes áreas de conhecimento: {', '.join(areas_conhecimento_list)}.\n\n" if areas_conhecimento_list else ""
+
+            content = summary + texto_autores + texto_conhecimento
+
+            meta = base_metadata.copy()
+            meta.update({
+                "tipo": "artigo",
+                "titulo": titulo,
+                "ano": int(ano) if ano.isdigit() else 0,
+                "conteudo": content
+            })
+            docs.append(Document(page_content=content, metadata=meta))
+
         return docs
         
     def _get_orientacoes(self):
@@ -140,26 +209,7 @@ class LattesProcessor:
         #1. Projetos de Pesquisa
         docs.extend(self._get_projetos())
 
-        # 2. Artigos
-        for artigo in self.root.findall('.//ARTIGO-PUBLICADO'):
-            basicos = artigo.find('DADOS-BASICOS-DO-ARTIGO')
-            detalhes = artigo.find('DETALHAMENTO-DO-ARTIGO')
-            
-            if basicos is None or detalhes is None: continue
-
-            titulo = basicos.attrib.get('TITULO-DO-ARTIGO', '')
-            ano = basicos.attrib.get('ANO-DO-ARTIGO', '0')
-            revista = detalhes.attrib.get('TITULO-DO-PERIODICO-OU-REVISTA', '')
-            
-            content = f"ARTIGO: {titulo}\nREVISTA: {revista}\nPESQUISADOR: {self.researcher_info['nome']}"
-            
-            meta = base_meta.copy()
-            meta.update({
-                "tipo": "artigo",
-                "titulo": titulo,
-                "ano": int(ano) if ano.isdigit() else 0,
-                "conteudo": content
-            })
-            docs.append(Document(page_content=content, metadata=meta))
+        #2. Artigos Publicados
+        docs.extend(self._get_artigos())
 
         return docs
