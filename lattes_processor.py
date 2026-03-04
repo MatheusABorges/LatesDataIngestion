@@ -186,14 +186,113 @@ class LattesProcessor:
                 "tipo": "artigo",
                 "titulo": titulo,
                 "ano": int(ano) if ano.isdigit() else 0,
-                "conteudo": content
             })
             docs.append(Document(page_content=content, metadata=meta))
 
         return docs
         
+
+    def _get_orientacoes_mestrado(self, orientacao):
+        docs = []
+        base_metadata = self.researcher_info.copy()
+
+        for orientacao_mestrado in orientacao.findall('.//ORIENTACOES-CONCLUIDAS-PARA-MESTRADO'):
+            dados_basicos = orientacao_mestrado.find('DADOS-BASICOS-DE-ORIENTACOES-CONCLUIDAS-PARA-MESTRADO')
+            if dados_basicos is None:
+                continue
+
+            titulo = dados_basicos.attrib.get('TITULO', '').strip()
+            if not titulo:
+                continue
+
+            natureza = dados_basicos.attrib.get('NATUREZA', '').strip()
+            ano = dados_basicos.attrib.get('ANO', '').strip()
+            pais = dados_basicos.attrib.get('PAIS', '').strip()
+            idioma = dados_basicos.attrib.get('IDIOMA', '').strip()
+
+            frase_basica = [f"A orientação de mestrado intitulada '{titulo}'"]
+            if natureza: frase_basica.append(f"é um(a) {natureza}")
+            if ano: frase_basica.append(f"e foi concluída em {ano}")
+            if pais: frase_basica.append(f"no país {pais}")
+            if idioma: frase_basica.append(f"no idioma {idioma}")
+            
+            dados_basicos_str = " ".join(frase_basica) + "."
+
+            detalhamento = orientacao_mestrado.find('DETALHAMENTO-DE-ORIENTACOES-CONCLUIDAS-PARA-MESTRADO')
+            detalhamento_str = ""
+            if detalhamento is not None:
+                tipo_orientacao = detalhamento.attrib.get('TIPO-DE-ORIENTACAO', 'Orientador(a)').strip()
+                orientador = base_metadata.get('nome', 'Orientador')
+                nome_orientado = detalhamento.attrib.get('NOME-DO-ORIENTADO', '').strip()
+                instituicao = detalhamento.attrib.get('NOME-DA-INSTITUICAO', '').strip()
+                nome_curso = detalhamento.attrib.get('NOME-DO-CURSO', '').strip()
+
+                if nome_orientado:
+                    frase_detalhe = [f"O orientado '{nome_orientado}' teve '{orientador}' como {tipo_orientacao.lower()}"]
+                    if instituicao: frase_detalhe.append(f"na instituição '{instituicao}'")
+                    if nome_curso: frase_detalhe.append(f"no curso '{nome_curso}'")
+                    detalhamento_str = " ".join(frase_detalhe) + "."
+
+            palavras_chave = orientacao_mestrado.find('PALAVRAS-CHAVE')
+            palavras_lista = []
+            if palavras_chave is not None:
+                for i in range(1, 7):
+                    pc = palavras_chave.attrib.get(f'PALAVRA-CHAVE-{i}', '').strip()
+                    if pc: palavras_lista.append(pc)
+            
+            palavras_chave_str = f"As palavras-chave associadas a essa orientação são: {', '.join(palavras_lista)}." if palavras_lista else ""
+
+            setores_atividade = orientacao_mestrado.find('SETORES-DE-ATIVIDADE')
+            setores_lista = []
+            if setores_atividade is not None:
+                for i in range(1, 4):
+                    sa = setores_atividade.attrib.get(f'SETOR-DE-ATIVIDADE-{i}', '').strip()
+                    if sa: setores_lista.append(sa)
+            
+            setor_atividade_str = f"Os setores de atividade relacionados a essa orientação são: {', '.join(setores_lista)}." if setores_lista else ""
+
+            areas_lista = []
+            areas_conhecimento = orientacao_mestrado.find('AREAS-DO-CONHECIMENTO')
+            if areas_conhecimento is not None:
+                for i in range(1, 4): 
+                    area_tag = areas_conhecimento.find(f'AREA-DO-CONHECIMENTO-{i}')
+                    if area_tag is not None:
+                        atributos_area = [
+                            'NOME-GRANDE-AREA-DO-CONHECIMENTO', 'NOME-DA-AREA-DO-CONHECIMENTO', 
+                            'NOME-DA-SUB-AREA-DO-CONHECIMENTO', 'NOME-DA-ESPECIALIDADE'
+                        ]
+                        for attr in atributos_area:
+                            val = area_tag.attrib.get(attr, '').strip()
+                            if val and val not in areas_lista:
+                                areas_lista.append(val)
+            
+            areas_conhecimento_str = f"As áreas de conhecimento relacionadas a essa orientação são: {', '.join(areas_lista)}." if areas_lista else ""
+
+            partes_conteudo = [dados_basicos_str, detalhamento_str, palavras_chave_str, setor_atividade_str, areas_conhecimento_str]
+            content = "\n\n".join(filter(None, partes_conteudo))
+
+            meta = base_metadata.copy()
+            meta.update({
+                "tipo": "orientacao",
+                "titulo": titulo,
+                "ano": int(ano) if ano.isdigit() else 0,
+                "subtipo": "mestrado",
+                "conteudo": content
+            })
+            docs.append(Document(page_content=content, metadata=meta))
+        
+        return docs
+
+
     def _get_orientacoes(self):
-        return None    
+        docs = []
+        base_meta = self.researcher_info.copy()
+
+        for orientacao in self.root.findall('.//ORIENTACOES-CONCLUIDAS'):
+            #MESTRADO
+            docs.extend(self._get_orientacoes_mestrado(orientacao))
+
+        return docs    
 
     def _get_atuacao(self):
         return None
@@ -211,5 +310,8 @@ class LattesProcessor:
 
         #2. Artigos Publicados
         docs.extend(self._get_artigos())
+
+        #3. Orientações Concluídas
+        docs.extend(self._get_orientacoes())
 
         return docs
