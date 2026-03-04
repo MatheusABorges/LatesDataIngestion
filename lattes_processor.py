@@ -211,7 +211,7 @@ class LattesProcessor:
                 continue
 
             titulo = dados_basicos.attrib.get('TITULO', '').strip()
-            if not titulo:
+            if not titulo and nivel != "POS-DOUTORADO":
                 continue
 
             natureza = dados_basicos.attrib.get('NATUREZA', '').strip()
@@ -219,7 +219,8 @@ class LattesProcessor:
             pais = dados_basicos.attrib.get('PAIS', '').strip()
             idioma = dados_basicos.attrib.get('IDIOMA', '').strip()
 
-            frase_basica = [f"A orientação de {nivel_lower} intitulada '{titulo}'"]
+            frase_basica = [f"A orientação de {nivel_lower}"]
+            if titulo: frase_basica.append(f"intitulada '{titulo}'")
             if natureza: frase_basica.append(f"é um(a) {natureza}")
             if ano: frase_basica.append(f"e foi concluída em {ano}")
             if pais: frase_basica.append(f"no país {pais}")
@@ -237,7 +238,9 @@ class LattesProcessor:
                 nome_curso = detalhamento.attrib.get('NOME-DO-CURSO', '').strip()
 
                 if nome_orientado:
-                    frase_detalhe = [f"O orientado '{nome_orientado}' teve '{orientador}' como {tipo_orientacao.lower()}"]
+                    frase_detalhe = [f"O(a) orientado(a) '{nome_orientado}' teve '{orientador}' como"]
+                    if tipo_orientacao: frase_detalhe.append(f"'{tipo_orientacao.lower()}'") 
+                    else: frase_detalhe.append("orientador(a)")
                     if instituicao: frase_detalhe.append(f"na instituição '{instituicao}'")
                     if nome_curso: frase_detalhe.append(f"no curso '{nome_curso}'")
                     detalhamento_str = " ".join(frase_detalhe) + "."
@@ -301,6 +304,9 @@ class LattesProcessor:
 
             #DOUTORADO
             docs.extend(self._get_orientacoes_por_nivel(orientacao, "DOUTORADO"))
+
+            #POS-DOUTORADO
+            docs.extend(self._get_orientacoes_por_nivel(orientacao, "POS-DOUTORADO"))
 
         return docs    
 
