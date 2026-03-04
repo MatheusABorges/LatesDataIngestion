@@ -192,12 +192,21 @@ class LattesProcessor:
         return docs
         
 
-    def _get_orientacoes_mestrado(self, orientacao):
+    def _get_orientacoes_por_nivel(self, orientacao, nivel):
+        """
+        Extrai orientações concluídas baseadas no nível (ex: 'MESTRADO' ou 'DOUTORADO').
+        """
         docs = []
         base_metadata = self.researcher_info.copy()
+        
+        nivel_lower = nivel.lower()
 
-        for orientacao_mestrado in orientacao.findall('.//ORIENTACOES-CONCLUIDAS-PARA-MESTRADO'):
-            dados_basicos = orientacao_mestrado.find('DADOS-BASICOS-DE-ORIENTACOES-CONCLUIDAS-PARA-MESTRADO')
+        tag_principal = f'.//ORIENTACOES-CONCLUIDAS-PARA-{nivel}'
+        tag_basicos = f'DADOS-BASICOS-DE-ORIENTACOES-CONCLUIDAS-PARA-{nivel}'
+        tag_detalhes = f'DETALHAMENTO-DE-ORIENTACOES-CONCLUIDAS-PARA-{nivel}'
+
+        for orientacao_node in orientacao.findall(tag_principal):
+            dados_basicos = orientacao_node.find(tag_basicos)
             if dados_basicos is None:
                 continue
 
@@ -210,7 +219,7 @@ class LattesProcessor:
             pais = dados_basicos.attrib.get('PAIS', '').strip()
             idioma = dados_basicos.attrib.get('IDIOMA', '').strip()
 
-            frase_basica = [f"A orientação de mestrado intitulada '{titulo}'"]
+            frase_basica = [f"A orientação de {nivel_lower} intitulada '{titulo}'"]
             if natureza: frase_basica.append(f"é um(a) {natureza}")
             if ano: frase_basica.append(f"e foi concluída em {ano}")
             if pais: frase_basica.append(f"no país {pais}")
@@ -218,7 +227,7 @@ class LattesProcessor:
             
             dados_basicos_str = " ".join(frase_basica) + "."
 
-            detalhamento = orientacao_mestrado.find('DETALHAMENTO-DE-ORIENTACOES-CONCLUIDAS-PARA-MESTRADO')
+            detalhamento = orientacao_node.find(tag_detalhes)
             detalhamento_str = ""
             if detalhamento is not None:
                 tipo_orientacao = detalhamento.attrib.get('TIPO-DE-ORIENTACAO', 'Orientador(a)').strip()
@@ -233,7 +242,7 @@ class LattesProcessor:
                     if nome_curso: frase_detalhe.append(f"no curso '{nome_curso}'")
                     detalhamento_str = " ".join(frase_detalhe) + "."
 
-            palavras_chave = orientacao_mestrado.find('PALAVRAS-CHAVE')
+            palavras_chave = orientacao_node.find('PALAVRAS-CHAVE')
             palavras_lista = []
             if palavras_chave is not None:
                 for i in range(1, 7):
@@ -242,7 +251,7 @@ class LattesProcessor:
             
             palavras_chave_str = f"As palavras-chave associadas a essa orientação são: {', '.join(palavras_lista)}." if palavras_lista else ""
 
-            setores_atividade = orientacao_mestrado.find('SETORES-DE-ATIVIDADE')
+            setores_atividade = orientacao_node.find('SETORES-DE-ATIVIDADE')
             setores_lista = []
             if setores_atividade is not None:
                 for i in range(1, 4):
@@ -252,7 +261,7 @@ class LattesProcessor:
             setor_atividade_str = f"Os setores de atividade relacionados a essa orientação são: {', '.join(setores_lista)}." if setores_lista else ""
 
             areas_lista = []
-            areas_conhecimento = orientacao_mestrado.find('AREAS-DO-CONHECIMENTO')
+            areas_conhecimento = orientacao_node.find('AREAS-DO-CONHECIMENTO')
             if areas_conhecimento is not None:
                 for i in range(1, 4): 
                     area_tag = areas_conhecimento.find(f'AREA-DO-CONHECIMENTO-{i}')
@@ -276,13 +285,11 @@ class LattesProcessor:
                 "tipo": "orientacao",
                 "titulo": titulo,
                 "ano": int(ano) if ano.isdigit() else 0,
-                "subtipo": "mestrado",
-                "conteudo": content
+                "subtipo": nivel_lower,
             })
             docs.append(Document(page_content=content, metadata=meta))
         
         return docs
-
 
     def _get_orientacoes(self):
         docs = []
@@ -290,7 +297,10 @@ class LattesProcessor:
 
         for orientacao in self.root.findall('.//ORIENTACOES-CONCLUIDAS'):
             #MESTRADO
-            docs.extend(self._get_orientacoes_mestrado(orientacao))
+            docs.extend(self._get_orientacoes_por_nivel(orientacao, "MESTRADO"))
+
+            #DOUTORADO
+            docs.extend(self._get_orientacoes_por_nivel(orientacao, "DOUTORADO"))
 
         return docs    
 
