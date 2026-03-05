@@ -201,9 +201,14 @@ class LattesProcessor:
         
         nivel_lower = nivel.lower()
 
-        tag_principal = f'.//ORIENTACOES-CONCLUIDAS-PARA-{nivel}'
-        tag_basicos = f'DADOS-BASICOS-DE-ORIENTACOES-CONCLUIDAS-PARA-{nivel}'
-        tag_detalhes = f'DETALHAMENTO-DE-ORIENTACOES-CONCLUIDAS-PARA-{nivel}'
+        if nivel != "OUTRO":
+            tag_principal = f'.//ORIENTACOES-CONCLUIDAS-PARA-{nivel}'
+            tag_basicos = f'DADOS-BASICOS-DE-ORIENTACOES-CONCLUIDAS-PARA-{nivel}'
+            tag_detalhes = f'DETALHAMENTO-DE-ORIENTACOES-CONCLUIDAS-PARA-{nivel}'
+        else:
+            tag_principal = f'.//OUTRAS-ORIENTACOES-CONCLUIDAS'
+            tag_basicos = f'DADOS-BASICOS-DE-OUTRAS-ORIENTACOES-CONCLUIDAS'
+            tag_detalhes = f'DETALHAMENTO-DE-OUTRAS-ORIENTACOES-CONCLUIDAS'
 
         for orientacao_node in orientacao.findall(tag_principal):
             dados_basicos = orientacao_node.find(tag_basicos)
@@ -219,19 +224,20 @@ class LattesProcessor:
             pais = dados_basicos.attrib.get('PAIS', '').strip()
             idioma = dados_basicos.attrib.get('IDIOMA', '').strip()
 
-            frase_basica = [f"A orientação de {nivel_lower}"]
-            if titulo: frase_basica.append(f"intitulada '{titulo}'")
-            if natureza: frase_basica.append(f"é um(a) {natureza}")
-            if ano: frase_basica.append(f"e foi concluída em {ano}")
-            if pais: frase_basica.append(f"no país {pais}")
+            frase_basica = [f"A orientação de {nivel_lower}"] if nivel != "OUTRO" else ["A orientação"]
+            if natureza: frase_basica.append(f"refere-se a um(a) {natureza}")
+            if titulo: frase_basica.append(f"intitulado(a) '{titulo}'")
             if idioma: frase_basica.append(f"no idioma {idioma}")
+            if pais: frase_basica.append(f"no país {pais}")
+            if ano: frase_basica.append(f"a orientação foi concluída em {ano}")
             
             dados_basicos_str = " ".join(frase_basica) + "."
 
             detalhamento = orientacao_node.find(tag_detalhes)
+            tipo_orientacao_tag = 'TIPO-DE-ORIENTACAO' if nivel != "OUTRO" else 'TIPO-DA-ORIENTACAO-CONCLUIDA'
             detalhamento_str = ""
             if detalhamento is not None:
-                tipo_orientacao = detalhamento.attrib.get('TIPO-DE-ORIENTACAO', 'Orientador(a)').strip()
+                tipo_orientacao = detalhamento.attrib.get(tipo_orientacao_tag, 'Orientador(a)').strip()
                 orientador = base_metadata.get('nome', 'Orientador')
                 nome_orientado = detalhamento.attrib.get('NOME-DO-ORIENTADO', '').strip()
                 instituicao = detalhamento.attrib.get('NOME-DA-INSTITUICAO', '').strip()
@@ -280,7 +286,11 @@ class LattesProcessor:
             
             areas_conhecimento_str = f"As áreas de conhecimento relacionadas a essa orientação são: {', '.join(areas_lista)}." if areas_lista else ""
 
-            partes_conteudo = [dados_basicos_str, detalhamento_str, palavras_chave_str, setor_atividade_str, areas_conhecimento_str]
+            informacoes_adicionais = orientacao_node.find('INFORMACOES-ADICIONAIS')
+            descricao_informacoes_adicionais = informacoes_adicionais.attrib.get('DESCRICAO-INFORMACOES-ADICIONAIS', '').strip() if informacoes_adicionais is not None else ""
+            informacoes_adicionais_str = f"\nInformações adicionais sobre essa orientação: {descricao_informacoes_adicionais}." if descricao_informacoes_adicionais else ""
+            
+            partes_conteudo = [dados_basicos_str, detalhamento_str, palavras_chave_str, setor_atividade_str, areas_conhecimento_str, informacoes_adicionais_str]
             content = "\n\n".join(filter(None, partes_conteudo))
 
             meta = base_metadata.copy()
@@ -307,6 +317,9 @@ class LattesProcessor:
 
             #POS-DOUTORADO
             docs.extend(self._get_orientacoes_por_nivel(orientacao, "POS-DOUTORADO"))
+
+            #OUTRO
+            docs.extend(self._get_orientacoes_por_nivel(orientacao, "OUTRO"))
 
         return docs    
 
