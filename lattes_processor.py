@@ -38,29 +38,27 @@ class LattesProcessor:
         resumo = dados_gerais.find('RESUMO-CV')
         texto_resumo = resumo.attrib.get('TEXTO-RESUMO-CV-RH', '') if resumo is not None else ""
 
-        areas = [a.attrib.get('NOME-DA-AREA-DO-CONHECIMENTO') for a in self.root.findall('.//AREA-DE-ATUACAO')]
-        texto_areas = ", ".join(filter(None, areas))
+        pais_origem = dados_gerais.attrib.get('PAIS-DE-NACIONALIDADE', '').strip()
 
-        keywords = []
-        for proj in self.root.findall('.//PROJETO-DE-PESQUISA'):
-            keywords.append(proj.attrib.get('NOME-DO-PROJETO'))
-        for orient in self.root.findall('.//DETALHAMENTO-DA-ORIENTACAO-CONCLUIDA'):
-            keywords.append(orient.attrib.get('TITULO-DO-TRABALHO-DE-CONCLUSAO'))
+        areas_nome = [a.attrib.get('NOME-DA-AREA-DO-CONHECIMENTO') for a in dados_gerais.findall('.//AREA-DE-ATUACAO')]
+        areas_nome_grande = [a.attrib.get('NOME-GRANDE-AREA-DO-CONHECIMENTO') for a in dados_gerais.findall('.//AREA-DE-ATUACAO')]
+        areas_nome_sub = [a.attrib.get('NOME-DA-SUB-AREA-DO-CONHECIMENTO') for a in dados_gerais.findall('.//AREA-DE-ATUACAO')]
+        areas_nome_espec = [a.attrib.get('NOME-DA-ESPECIALIDADE') for a in dados_gerais.findall('.//AREA-DE-ATUACAO')]  
         
-        texto_keywords = "; ".join(filter(None, keywords))
+        areas_str = list(set(filter(None, areas_nome + areas_nome_grande + areas_nome_sub + areas_nome_espec)))
+        texto_areas = ", ".join(filter(None, areas_str))
 
-        content = (
-            f"PERFIL PESQUISADOR: {self.researcher_info['nome']}\n"
-            f"INSTITUIÇÃO: {self.researcher_info['instituicao']}\n"
-            f"RESUMO: {texto_resumo}\n"
-            f"ÁREAS DE ATUAÇÃO: {texto_areas}\n"
-            f"TEMAS TRABALHADOS (PROJETOS/ORIENTAÇÕES): {texto_keywords}"
-        )
+        pesquisador = f"'{self.researcher_info['nome']}' "
+        pais = f"tem sua origem no país: {pais_origem} " if pais_origem else ""
+        instituicao = f"e está vinculado(a) à instituição {self.researcher_info['instituicao']}.\n" if self.researcher_info.get('instituicao') else ""
+        areas = f"Suas áreas de atuação e conhecimento incluem: {texto_areas}.\n" if texto_areas else ""
+        resumo_str = f"Seu currículo pode ser resumido como: {texto_resumo}\n" if texto_resumo else ""
+
+        content = pesquisador + pais + instituicao + areas + resumo_str
 
         metadata = self.researcher_info.copy()
         metadata.update({
             "tipo": "perfil",
-            "conteudo": content
         })
 
         return Document(page_content=content, metadata=metadata)
@@ -306,7 +304,6 @@ class LattesProcessor:
 
     def _get_orientacoes(self):
         docs = []
-        base_meta = self.researcher_info.copy()
 
         for orientacao in self.root.findall('.//ORIENTACOES-CONCLUIDAS'):
             #MESTRADO
