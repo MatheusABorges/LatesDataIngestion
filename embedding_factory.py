@@ -1,9 +1,22 @@
 import os
+from typing import List
 from langchain_core.embeddings import Embeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_qdrant import FastEmbedSparse
 
+
+class PrefixedHuggingFaceEmbeddings(HuggingFaceEmbeddings):
+    prefix: str = ""
+
+    def embed_query(self, text: str) -> List[float]:
+        return super().embed_query(self.prefix + text)
+
+    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        return super().embed_documents([self.prefix + t for t in texts])
+
+
 class EmbeddingHandler:
-    def __init__(self, provider: str, model_name: str, api_key: str = None, is_ingestion: bool = True, device: str = "cpu"):
+    def __init__(self, provider: str, model_name: str, api_key: str = None, is_ingestion: bool = True, device: str = "cpu", prompt_name: str = None, prefix: str = None, cache_folder: str = "./modelos_locais_cache"):
         """
         Inicializa o handler para vetores DENSOS.
         """
@@ -12,6 +25,9 @@ class EmbeddingHandler:
         self.api_key = api_key
         self.is_ingestion = is_ingestion
         self.device = device
+        self.cache_folder = cache_folder
+        self.prompt_name = prompt_name  # ex: "retrieval_document" (EmbeddingGemma)
+        self.prefix = prefix or ""  # ex: "passage: " (intfloat/multilingual-e5-*)
         
         self._model_instance = self._create_model()
         self._dimension = self._calculate_dimension()
@@ -37,20 +53,21 @@ class EmbeddingHandler:
     def _create_model(self) -> Embeddings:
         # --- HUGGING FACE LOCAL ---
         if self.provider == "huggingface_local":
-            from langchain_huggingface import HuggingFaceEmbeddings
-            
-            if not os.path.exists(self.model_name):
-                print(f"Caminho '{self.model_name}' não existe. Tentando download automático...")
-                from huggingface_hub import snapshot_download
-                snapshot_download(
-                    repo_id="sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
-                    local_dir=self.model_name,
-                    local_dir_use_symlinks=False
-                )
+            looks_like_local_path = self.model_name.startswith((".", "/", "~")) or "\\" in self.model_name
+            if looks_like_local_path and not os.path.exists(self.model_name):
+                print(f"Caminho '{self.model_name}' não existe. Esse modelo precisa ser baixado manualmente antes (ver README, seção 'Modelo de Embeddings').")
+                raise FileNotFoundError(f"Modelo local não encontrado em '{self.model_name}'.")
 
-            return HuggingFaceEmbeddings(
+            encode_kwargs = {}
+            if self.prompt_name:
+                encode_kwargs["prompt_name"] = self.prompt_name
+
+            return PrefixedHuggingFaceEmbeddings(
                 model_name=self.model_name,
-                model_kwargs={"device": self.device}
+                cache_folder=None if looks_like_local_path else self.cache_folder,
+                model_kwargs={"device": self.device},
+                encode_kwargs=encode_kwargs,
+                prefix=self.prefix,
             )
 
         # --- GOOGLE ---

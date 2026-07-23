@@ -1,5 +1,6 @@
 /input_files
 /modelos_locais
+/modelos_locais_cache
 /qdrant_data
 /venv
 .env

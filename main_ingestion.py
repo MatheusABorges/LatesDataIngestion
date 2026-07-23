@@ -28,7 +28,10 @@ try:
         provider=os.getenv("EMBEDDING_PROVIDER"),
         model_name=os.getenv("EMBEDDING_MODEL_NAME"),
         api_key=os.getenv("EMBEDDING_API_KEY"),
-        device=os.getenv("HUGGING_FACE_DEVICE", "cpu")
+        device=os.getenv("HUGGING_FACE_DEVICE", "cpu"),
+        prompt_name=os.getenv("EMBEDDING_PROMPT_NAME") or None,  # ex: "retrieval_document" (EmbeddingGemma)
+        prefix=os.getenv("EMBEDDING_PREFIX") or None,  # ex: "passage: " (intfloat/multilingual-e5-*)
+        cache_folder=os.getenv("EMBEDDING_CACHE_FOLDER", "./modelos_locais_cache"),
     )
     model_esparso = EmbeddingHandler.get_sparse_model()
 except Exception as e:
