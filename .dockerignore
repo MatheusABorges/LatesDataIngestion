@@ -1,0 +1,14 @@
+# Ignora ambientes virtuais do Python e caches
+venv/
+env/
+__pycache__/
+*.pyc
+
+modelos_locais/
+input_files/
+*.xml
+*.pdf
+*.json
+
+.git/
+.gitignore
